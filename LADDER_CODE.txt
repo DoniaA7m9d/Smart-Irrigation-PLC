@@ -1,0 +1,79 @@
+PLC DUAL-ZONE SMART IRRIGATION - FULL LADDER EXTRACT - 52 RUNGS
+
+
+--- SAFETY & START-UP ---
+Rung 01: [XIO Estop] -- ([XIC StartPB] // [XIC SystemRun]) -- [XIO StopPB] -- (OTE SystemRun)
+Rung 02: [XIC Estop] -- (OTE EStopOk)
+Rung 03: [XIC AutoManualSel] -- (OTE AutoMode)
+
+--- SCALING & SENSOR VALIDATION ---
+Rung 04: SCP SoilMoistZ1Raw [Input 0.0 - 16383.0] -> [Output 0.0 - 100.0] Destination: SoilMoistZ1Pct
+Rung 05: SCP SoilMoistZ2Raw [Input 0.0 - 16383.0] -> [Output 0.0 - 100.0] Destination: SoilMoistZ2Pct
+Rung 06: LIM Test: SoilMoistZ1Raw LowLimit: 300.0 HighLimit: 15000.0 -> (OTE Z1SensorOK)
+Rung 07: [XIO Z1SensorOK] -- (OTE Z1SensorFault)
+Rung 08: LIM Test: SoilMoistZ2Raw LowLimit: 300.0 HighLimit: 15000.0 -> (OTE Z2SensorOK)
+Rung 09: [XIO Z2SensorOK] -- (OTE Z2SensorFault)
+
+--- HYSTERESIS LOGIC Z1 ---
+Rung 10: LES SourceA: SoilMoistZ1Pct SourceB: 35.0 -> (OTE Z1BelowLow)
+Rung 11: [XIC Z1BelowLow] -- (OTL Z1Dry)
+Rung 12: GRT SourceA: SoilMoistZ1Pct SourceB: 55.0 -> (OTE Z1AboveHigh)
+Rung 13: [XIC Z1AboveHigh] -- (OTU Z1Dry)
+
+--- HYSTERESIS LOGIC Z2 ---
+Rung 14: LES SourceA: SoilMoistZ2Pct SourceB: 35.0 -> (OTE Z2BelowLow)
+Rung 15: [XIC Z2BelowLow] -- (OTL Z2Dry)
+Rung 16: GRT SourceA: SoilMoistZ2Pct SourceB: 55.0 -> (OTE Z2AboveHigh)
+Rung 17: [XIC Z2AboveHigh] -- (OTU Z2Dry)
+
+--- TANK & IRRIGATION REQUEST ---
+Rung 18: [XIC TankLowLevel] -- (OTE TankLowAlarm)
+Rung 19: [XIC SystemRun] [XIC AutoMode] [XIC Z1Dry] [XIO Z1SensorFault] [XIO TankLowAlarm] [XIO T2.DN] [XIO Z1MaxRunAlarm] [XIO Z2Irrigating] -- (OTE Z1Irrigating)
+Rung 20: [XIC SystemRun] [XIC AutoMode] [XIC Z2Dry] [XIO Z2SensorFault] [XIO TankLowAlarm] [XIO T3.DN] [XIO Z2MaxRunAlarm] [XIO Z1Irrigating] -- (OTE Z2Irrigating)
+
+--- MAX RUN PROTECTION ---
+Rung 21: [XIC Z1Irrigating] -- TON T0 Timer On-Delay Preset: 600 Base: 1 -> T0.DN T0.TT
+Rung 22: [XIC T0.DN] -- (L) Z1MaxRunAlarm
+Rung 23: [XIC Z2Irrigating] -- TON T1 Preset: 600 Base: 1 -> T1.DN T1.TT
+Rung 24: [XIC T1.DN] -- (L) Z2MaxRunAlarm
+
+--- ANTI-CYCLE ---
+Rung 25: [XIO Z1Irrigating] -- TON T2 Preset: 900 -> T2.DN (Anti-cycle Z1)
+Rung 26: [XIO Z2Irrigating] -- TON T3 Preset: 900 -> T3.DN (Anti-cycle Z2)
+
+--- VALVE & PUMP SEQUENCING ---
+Rung 27: ([XIC ManualValve1PB] [XIO AutoMode]) // [XIC Z1Irrigating] -- (OTE ValveZ1)
+Rung 28: ([XIC ManualValve2PB] [XIO AutoMode]) // [XIC Z2Irrigating] -- (OTE ValveZ2)
+Rung 29: [XIC Z1Irrigating] // [XIC Z2Irrigating] -- (OTE PumpRequest)
+Rung 30: [XIC PumpRequest] -- TON T5 Preset: 3 -> T5.DN (Valve open delay)
+Rung 31: [XIC PumpRequest] [XIC T5.DN] [XIC SystemRun] [XIO TankLowAlarm] [XIO T4.DN] -- (OTE Pump)
+Rung 32: [XIO Pump] -- TON T4 Preset: 120 -> T4.DN (Pump Anti-cycle)
+
+--- NO-EFFECT DETECTION Z1 ---
+Rung 33: [XIC Z1Irrigating] [XIO Z1PrevIrr] -- MOV Source: SoilMoistZ1Pct Dest: Z1StartMoist
+Rung 34: [XIC Z1Irrigating] -- (OTE Z1PrevIrr)
+Rung 35: [XIC Z1Irrigating] -- TON T6 Preset: 180 -> T6.DN T6.TT
+Rung 36: ADD SourceA: Z1StartMoist SourceB: 5.0 Dest: Z1TargetMoist
+Rung 37: [XIC T6.DN] [LES SourceA: SoilMoistZ1Pct SourceB: Z1TargetMoist] -- (OTE Z1NoEffectCond)
+Rung 38: [XIC Z1NoEffectCond] -- (L) Z1NoEffectAlarm
+
+--- NO-EFFECT DETECTION Z2 ---
+Rung 39: [XIC Z2Irrigating] [XIO Z2PrevIrr] -- MOV Source: SoilMoistZ2Pct Dest: Z2StartMoist
+Rung 40: [XIC Z2Irrigating] -- (OTE Z2PrevIrr)
+Rung 41: [XIC Z2Irrigating] -- TON T7 Preset: 180 -> T7.DN T7.TT
+Rung 42: ADD SourceA: Z2StartMoist SourceB: 5.0 Dest: Z2TargetMoist
+Rung 43: [XIC T7.DN] [LES SourceA: SoilMoistZ2Pct SourceB: Z2TargetMoist] -- (OTE Z2NoEffectCond)
+Rung 44: [XIC Z2NoEffectCond] -- (L) Z2NoEffectAlarm
+
+--- ALARM AGGREGATION & ANNUNCIATION ---
+Rung 45: [XIC Z1SensorFault] OR [XIC Z2SensorFault] OR [XIC TankLowAlarm] OR [XIC Z1MaxRunAlarm] OR [XIC Z2MaxRunAlarm] OR [XIC Z1NoEffectAlarm] OR [XIC Z2NoEffectAlarm] -- (OTE AnyAlarm) + (OTE AlarmLight)
+Rung 46: [XIC AnyAlarm] -- (OTE AlarmLight)
+Rung 47: [XIC AnyAlarm] [XIO AlarmResetPB] -- (OTE AlarmHorn)
+Rung 48: [XIC AlarmResetPB] -- (U) Z1MaxRunAlarm
+Rung 49: [XIC AlarmResetPB] -- (U) Z2MaxRunAlarm
+Rung 50: [XIC AlarmResetPB] -- (U) Z1NoEffectAlarm
+Rung 51: [XIC AlarmResetPB] -- (U) Z2NoEffectAlarm
+Rung 52: [XIC SystemRun] -- (OTE SystemRunLamp)
+
+END - TOTAL 52 RUNGS
+Note: Logic validated in PLC Ladder Simulator. Field testing on physical PLC hardware is pending.
